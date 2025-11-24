@@ -71,7 +71,7 @@ def connect_to_gsheet():
         creds_dict = st.secrets["gcp_service_account"]
         creds = Credentials.from_service_account_info(creds_dict)
         scoped_creds = creds.with_scopes([
-            "https.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive"
         ])
         client = gspread.authorize(scoped_creds)
@@ -119,37 +119,39 @@ with tab1:
                 datetime.date.today(),
                 format="DD.MM.YYYY"  # Сіз сұраған ыңғайлы формат
             )
-                    # ...
-with col2:
-    # --- АҚЫЛДЫ ЛОГИКА БАСТАЛДЫ ---
-    day_of_week = selected_day.weekday() 
-    week_number = selected_day.isocalendar()[1] 
-    is_even_week = (week_number % 2 == 0) # % 2 == 0 "жұп" дегенді білдіреді
+        
+        # Бұл with col2: блогы st.form ішінде және col1-мен бір деңгейде болуы керек
+        with col2:
+            # --- АҚЫЛДЫ ЛОГИКА БАСТАЛДЫ ---
+            day_of_week = selected_day.weekday() 
+            week_number = selected_day.isocalendar()[1] 
+            is_even_week = (week_number % 2 == 0) # % 2 == 0 "жұп" дегенді білдіреді
 
-    todays_subjects = list(DAILY_SCHEDULE.get(day_of_week, []))
+            todays_subjects = list(DAILY_SCHEDULE.get(day_of_week, []))
 
-    # Сәрсенбі логикасы
-    if day_of_week == 2: # 2 = Сәрсенбі
-        if is_even_week:
-            # Бұл ЖҰП апта (48, 50, т.б.)
-            todays_subjects.insert(1, "Физика (ауыспалы)") 
-        else:
-            # Бұл ТАҚ апта (47, 49, т.б.)
-            todays_subjects.insert(1, "Ағылшын тілі (ауыспалы)")
-
-    # Жұма логикасы
-    elif day_of_week == 4: # 4 = Жұма
-        if is_even_week:
-            # ЖҰП апта
-            todays_subjects.append("География (ауыспалы)")
-        else:
-            # ТАҚ апта
-            todays_subjects.append("Дүниежүзі тарихы (ауыспалы)")
-
-    # Тізімді дайындау
-        if not todays_subjects: 
+            # Сәрсенбі логикасы
+            if day_of_week == 2: # 2 = Сәрсенбі
+                if is_even_week:
+                    # Бұл ЖҰП апта (48, 50, т.б.)
+                    todays_subjects.insert(1, "Физика (ауыспалы)") 
+                else:
+                    # Бұл ТАҚ апта (47, 49, т.б.)
+                    todays_subjects.insert(1, "Ағылшын тілі (ауыспалы)")
+            
+            # Жұма логикасы
+            elif day_of_week == 4: # 4 = Жұма
+                if is_even_week:
+                    # ЖҰП апта
+                    todays_subjects.append("География (ауыспалы)")
+                else:
+                    # ТАҚ апта
+                    todays_subjects.append("Дүниежүзі тарихы (ауыспалы)")
+            
+            # Тізімді дайындау
+            if not todays_subjects: 
                 subject_options = ["Бүгін сабақ жоқ", "Басқа пән (төменге жазыңыз)"]
             else:
+                # Тізімге "Пәнді таңдаңыз..." және "Басқа пән..." опцияларын қосамыз
                 subject_options = ["Пәнді таңдаңыз..."] + todays_subjects + ["Басқа пән (төменге жазыңыз)"]
             
             # Жаңартылған selectbox
@@ -161,6 +163,7 @@ with col2:
             # --- АҚЫЛДЫ ЛОГИКА АЯҚТАЛДЫ ---
 
         # Егер "Басқа пән" таңдалса
+        # Бұл код col1/col2-мен бір деңгейде, бірақ form ішінде болуы керек
         other_subject = ""
         if selected_subject == "Басқа пән (төменге жазыңыз)":
             other_subject = st.text_input("Пәннің атын жазыңыз:", placeholder="Мыс: Электив")
@@ -195,7 +198,7 @@ with col2:
         # Сақтау батырмасы
         submitted = st.form_submit_button("💾 Бағаны сақтау", type="primary", use_container_width=True)
 
-    # --- Сақтау логикасы (Формадан тыс) ---
+    # --- Сақтау логикасы (Формадан тыс, бірақ 'with tab1' ішінде) ---
     if submitted:
         final_subject = other_subject if selected_subject == "Басқа пән (төменге жазыңыз)" else selected_subject
         
