@@ -119,8 +119,7 @@ with tab1:
                 datetime.date.today(),
                 format="DD.MM.YYYY"  # Сіз сұраған ыңғайлы формат
             )
-        
- # ...
+                    # ...
 with col2:
     # --- АҚЫЛДЫ ЛОГИКА БАСТАЛДЫ ---
     day_of_week = selected_day.weekday() 
@@ -148,8 +147,7 @@ with col2:
             todays_subjects.append("Дүниежүзі тарихы (ауыспалы)")
 
     # Тізімді дайындау
-    if not todays_subjects: 
-# ...
+        if not todays_subjects: 
                 subject_options = ["Бүгін сабақ жоқ", "Басқа пән (төменге жазыңыз)"]
             else:
                 subject_options = ["Пәнді таңдаңыз..."] + todays_subjects + ["Басқа пән (төменге жазыңыз)"]
