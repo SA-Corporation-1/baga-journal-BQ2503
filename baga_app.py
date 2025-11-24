@@ -10,6 +10,42 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- CSS СТИЛЬДЕРІН ҚОСУ ---
+def load_css():
+    st.markdown("""
+        <style>
+            /* Streamlit-тің негізгі контейнерін сәл кішірейту */
+            .main .block-container {
+                max-width: 90%; /* Сайттың енін азайту */
+                padding-top: 2rem;
+            }
+
+            /* 'Баға енгізу' формасын әдемілеу */
+            div[data-testid="stForm"] {
+                border: 1px solid #262730;
+                background-color: #1a1c24; /* Форманың фонын өзгерту */
+                border-radius: 10px; /* Қырларын дөңгелектеу */
+                padding: 20px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); /* Әдемі көлеңке */
+            }
+            
+            /* Батырмаларды үлкейту */
+            div[data-testid="stButton"] > button {
+                font-weight: bold;
+                border-radius: 8px;
+            }
+            
+            /* Хабарландыруларды әдемілеу (st.info, st.warning) */
+            div[data-testid="stAlert"] {
+                border-radius: 8px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+load_css()
+# --- CSS СОҢЫ ---
+
 # --- 1. Студенттер тізімі (Өзгермейді) ---
 STUDENT_LIST = [
     "Студентті таңдаңыз...",
@@ -96,10 +132,42 @@ def save_to_gsheet(client, sheet_name, data_row):
 
 # --- 4. Streamlit интерфейсі (ЖАҢАРТЫЛҒАН) ---
 
+from streamlit_option_menu import option_menu
+import streamlit_antd_components as sac
+
 st.title("📚 Күнделікті баға журналы (БҚ2503)")
 
-# Екі бөлім (Tab) құру
-tab1, tab2 = st.tabs(["📝 Баға енгізу", "🗓️ Сабақ кестесі"])
+# Жаңа, кәсіби навигация мәзірі
+selected_tab = option_menu(
+    menu_title=None, # Тақырыпты алып тастау
+    options=["Баға енгізу", "Сабақ кестесі", "Хабарландырулар"], 
+    icons=['pencil-square', 'calendar-week', 'bell-fill'], # Иконкалар
+    menu_icon="cast", 
+    default_index=0, 
+    orientation="horizontal", # Көлденең
+    styles={
+        "container": {"padding": "0!important", "background-color": "#0E1117"},
+        "icon": {"color": "#FF4B4B", "font-size": "18px"}, 
+        "nav-link": {"font-size": "16px", "text-align": "center", "margin":"0px", "--hover-color": "#262730"},
+        "nav-link-selected": {"background-color": "#FF4B4B", "color": "white", "font-weight": "bold"},
+    }
+)
+
+# Енді 'with tab1:' орнына 'if selected_tab == "Баға енгізу":' деп жазамыз
+if selected_tab == "Баға енгізу":
+    # ... (бұрынғы 'with tab1:' ішіндегі барлық код) ...
+    st.info("Күнді таңдасаңыз...")
+    # ... (қалған код) ...
+
+if selected_tab == "Сабақ кестесі":
+    # ... (бұрынғы 'with tab2:' ішіндегі барлық код) ...
+    st.subheader("БҚ2503 тобының сабақ кестесі")
+    # ... (қалған код) ...
+
+if selected_tab == "Хабарландырулар":
+    # ... (бұрынғы 'with tab3:' ішіндегі барлық код) ...
+    st.subheader("📢 Соңғы жаңалықтар мен хабарландырулар")
+
 
 # --- БӨЛІМ 1: БАҒА ЕНГІЗУ ФОРМАСЫ ---
 with tab1:
