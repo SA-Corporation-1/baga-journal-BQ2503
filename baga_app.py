@@ -120,30 +120,36 @@ with tab1:
                 format="DD.MM.YYYY"  # Сіз сұраған ыңғайлы формат
             )
         
-        with col2:
-            # --- АҚЫЛДЫ ЛОГИКА БАСТАЛДЫ ---
-            day_of_week = selected_day.weekday() 
-            week_number = selected_day.isocalendar()[1] 
-            is_even_week = (week_number % 2 == 0) 
+ # ...
+with col2:
+    # --- АҚЫЛДЫ ЛОГИКА БАСТАЛДЫ ---
+    day_of_week = selected_day.weekday() 
+    week_number = selected_day.isocalendar()[1] 
+    is_even_week = (week_number % 2 == 0) # % 2 == 0 "жұп" дегенді білдіреді
 
-            todays_subjects = list(DAILY_SCHEDULE.get(day_of_week, []))
+    todays_subjects = list(DAILY_SCHEDULE.get(day_of_week, []))
 
-            # Сәрсенбі логикасы
-            if day_of_week == 2: 
-                if is_even_week:
-                    todays_subjects.insert(1, "Физика (ауыспалы)") 
-                else:
-                    todays_subjects.insert(1, "Ағылшын тілі (ауыспалы)")
-            
-            # Жұма логикасы
-            elif day_of_week == 4: 
-                if is_even_week:
-                    todays_subjects.append("География (ауыспалы)")
-                else:
-                    todays_subjects.append("Дүниежүзі тарихы (ауыспалы)")
-            
-            # Тізімді дайындау
-            if not todays_subjects: 
+    # Сәрсенбі логикасы
+    if day_of_week == 2: # 2 = Сәрсенбі
+        if is_even_week:
+            # Бұл ЖҰП апта (48, 50, т.б.)
+            todays_subjects.insert(1, "Физика (ауыспалы)") 
+        else:
+            # Бұл ТАҚ апта (47, 49, т.б.)
+            todays_subjects.insert(1, "Ағылшын тілі (ауыспалы)")
+
+    # Жұма логикасы
+    elif day_of_week == 4: # 4 = Жұма
+        if is_even_week:
+            # ЖҰП апта
+            todays_subjects.append("География (ауыспалы)")
+        else:
+            # ТАҚ апта
+            todays_subjects.append("Дүниежүзі тарихы (ауыспалы)")
+
+    # Тізімді дайындау
+    if not todays_subjects: 
+# ...
                 subject_options = ["Бүгін сабақ жоқ", "Басқа пән (төменге жазыңыз)"]
             else:
                 subject_options = ["Пәнді таңдаңыз..."] + todays_subjects + ["Басқа пән (төменге жазыңыз)"]
