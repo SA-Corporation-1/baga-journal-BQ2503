@@ -88,7 +88,11 @@ with st.form("grade_form"):
     # Күнді таңдау
     col1, col2 = st.columns(2)
     with col1:
-        selected_day = st.date_input("Сабақ күнін таңдаңыз", datetime.date.today())
+        selected_day = st.date_input(
+            "Сабақ күнін таңдаңыз", 
+            datetime.date.today(),
+            format="DD.MM.YYYY"  # <-- Осы қатарды қосыңыз
+        )
     
     # Пәнді таңдау
     with col2:
