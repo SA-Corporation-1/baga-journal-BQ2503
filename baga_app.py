@@ -63,9 +63,12 @@ def save_to_gsheet(client, sheet_name, data_row):
 
 # ЖАҢА ФУНКЦИЯ (Аналитика үшін деректерді оқу)
 @st.cache_data(ttl=600) # Деректерді 10 минут сақтау
-def load_data_from_gsheet(client, sheet_name):
+def load_data_from_gsheet(sheet_name): # <-- 1. 'client' аргументін алып тастаңыз
     try:
+        client = connect_to_gsheet() # <-- 2. connect_to_gsheet() функциясын ОСЫ ЖЕРДЕ шақырыңыз
+        
         sheet = client.open(sheet_name).sheet1
+      
         values = sheet.get_all_values()
         if not values or len(values) < 2:
             return pd.DataFrame() # Егер бос болса, бос DataFrame қайтару
@@ -112,10 +115,10 @@ GOOGLE_SHEET_NAME = "Студенттердің бағалары" # Google Sheet
 # --- БӨЛІМ 1: АНАЛИТИКА (ЖАҢА БӨЛІМ) ---
 if selected_tab == "📊 Аналитика":
     st.subheader("📊 Жалпы үлгерім аналитикасы")
-    client = connect_to_gsheet()
     
-    if client:
-        df = load_data_from_gsheet(client, GOOGLE_SHEET_NAME)
+    # 'client'-ті бұл жерде шақырудың қажеті жоқ.
+    # load_data_from_gsheet функциясы оны өзі шақырады.
+    df = load_data_from_gsheet(GOOGLE_SHEET_NAME)
         
         if df.empty:
             st.warning("📊 Аналитика үшін әлі деректер жоқ. Бірнеше баға енгізіңіз.")
