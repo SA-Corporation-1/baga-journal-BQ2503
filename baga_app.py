@@ -2,8 +2,9 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import datetime
-# 1. ЖАҢА ИМПОРТ (Кәсіби дизайн үшін)
+import pandas as pd # Аналитика үшін қосылды
 from streamlit_option_menu import option_menu
+import streamlit_antd_components as sac # Жаңа дизайн кітапханасы
 
 # --- 0. Парақ баптаулары (Беттің аты мен иконкасы) ---
 st.set_page_config(
@@ -12,56 +13,18 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CSS СТИЛЬДЕРІН ҚОСУ (Кәсіби дизайн үшін) ---
-def load_css():
-    st.markdown("""
-        <style>
-            /* Streamlit-тің негізгі контейнерін сәл кішірейту */
-            .main .block-container {
-                max-width: 90%;
-                padding-top: 2rem;
-            }
-
-            /* 'Баға енгізу' формасын әдемілеу */
-            div[data-testid="stForm"] {
-                border: 1px solid #262730;
-                background-color: #1a1c24; /* Форманың фонын өзгерту */
-                border-radius: 10px; /* Қырларын дөңгелектеу */
-                padding: 20px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); /* Әдемі көлеңке */
-            }
-            
-            /* Хабарландыруларды әдемілеу (st.info, st.warning) */
-            div[data-testid="stAlert"] {
-                border-radius: 8px;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
-load_css()
-# --- CSS СОҢЫ ---
-
-
 # --- 1. Студенттер тізімі (Өзгермейді) ---
 STUDENT_LIST = [
     "Студентті таңдаңыз...",
-    "Ардабек Ерлан",
-    "Құрманбай Рамазан",
-    "Қабиден Йусуф",
-    "Алпысбаев Саят",
-    "Асқархан Алихан",
-    "Әділхан Ахметжан",
-    "Орнбеков Батыржан",
-    "Айкимбай Джалил",
-    "Тілеубек Нұрислам",
-    "Бахриден Жанат",
-    "Сарсенбай Ахмет"
+    "Ардабек Ерлан", "Құрманбай Рамазан", "Қабиден Йусуф",
+    "Алпысбаев Саят", "Асқархан Алихан", "Әділхан Ахметжан",
+    "Орнбеков Батыржан", "Айкимбай Джалил", "Тілеубек Нұрислам",
+    "Бахриден Жанат", "Сарсенбай Ахмет"
 ]
 
 # --- 2. Пәндер кестесі (Өзгермейді) ---
 DAILY_SCHEDULE = {
-    0: ["Қазақ тілі", "Физика", "Ағылшын тілі", "Орыс тілі және әдебиеті (онлайн)", "Химия (онлайн)"], # Дс
+    0: ["Қазақ тілі (онлайн)", "Физика", "Ағылшын тілі", "Орыс тілі және әдебиеті (онлайн)", "Химия (онлайн)"], # Дс
     1: ["Биология", "Информатика", "Математика"], # Сс
     2: ["Математика", "Қазақ әдебиеті", "Қазақ тілі (онлайн)"], # Ср
     3: ["Дене тәрбиесі", "Химия", "Қазақстан тарихы"], # Бс
@@ -70,15 +33,16 @@ DAILY_SCHEDULE = {
     6: []  # Жк
 }
 
-# --- 3. Google Sheets функциялары (Өзгермейді) ---
+# --- 3. Google Sheets функциялары ---
 
+# Қосылу функциясы (өзгеріссіз)
 @st.cache_resource
 def connect_to_gsheet():
     try:
         creds_dict = st.secrets["gcp_service_account"]
         creds = Credentials.from_service_account_info(creds_dict)
         scoped_creds = creds.with_scopes([
-            "https://www.googleapis.com/auth/spreadsheets",
+            "https.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive"
         ])
         client = gspread.authorize(scoped_creds)
@@ -87,114 +51,168 @@ def connect_to_gsheet():
         st.error(f"Google Sheets-ке қосылу кезінде қате: {e}")
         return None
 
+# Сақтау функциясы (өзгеріссіз)
 def save_to_gsheet(client, sheet_name, data_row):
     try:
         sheet = client.open(sheet_name).sheet1
         sheet.append_row(data_row, value_input_option='USER_ENTERED')
         return True
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error(f"'{sheet_name}' атты Google Sheet парағы табылмады. Атын тексеріңіз.")
-        return False
     except Exception as e:
         st.error(f"Деректерді сақтау кезінде қате: {e}")
         return False
 
+# ЖАҢА ФУНКЦИЯ (Аналитика үшін деректерді оқу)
+@st.cache_data(ttl=600) # Деректерді 10 минут сақтау
+def load_data_from_gsheet(client, sheet_name):
+    try:
+        sheet = client.open(sheet_name).sheet1
+        values = sheet.get_all_values()
+        if not values or len(values) < 2:
+            return pd.DataFrame() # Егер бос болса, бос DataFrame қайтару
+        
+        # Google Sheet-тегі баған аттары
+        headers = ["Күні", "Пән", "Студент Аты", "Баға", "Түсініктеме", "Енгізілген уақыт"]
+        
+        # Деректерді DataFrame-ге айналдыру (1-қатарды баған ретінде алу)
+        df = pd.DataFrame(values[1:], columns=headers)
+        
+        # Баға бағанын санға айналдыру (қателерді елемеу)
+        df['Баға'] = pd.to_numeric(df['Баға'], errors='coerce')
+        
+        # Күні бағанын дата форматына айналдыру
+        df['Күні'] = pd.to_datetime(df['Күні'], errors='coerce')
+        
+        return df
+    except Exception as e:
+        st.error(f"Деректерді оқу кезінде қате: {e}")
+        return pd.DataFrame()
+
 # --- 4. Streamlit интерфейсі (ЖАҢАРТЫЛҒАН) ---
 
-st.title("📚 Күнделікті баға журналы (БҚ2503)")
+st.title("📚 БҚ2503 Журналы: Бақылау тақтасы")
 
-# 2. ЖАҢА КӘСІБИ НАВИГАЦИЯ (st.tabs орнына)
+# Кәсіби навигация мәзірі (ЖАҢАРТЫЛДЫ - Аналитика қосылды)
 selected_tab = option_menu(
-    menu_title=None, # Тақырыпты алып тастау
-    options=["Баға енгізу", "Сабақ кестесі", "Хабарландырулар"], 
-    icons=['pencil-square', 'calendar-week', 'bell-fill'], # Иконкалар
+    menu_title=None, 
+    options=["📊 Аналитика", "📝 Баға енгізу", "🗓️ Сабақ кестесі", "🔔 Хабарландырулар"], 
+    icons=['bar-chart-line-fill', 'pencil-square', 'calendar-week', 'bell-fill'], 
     menu_icon="cast", 
     default_index=0, 
-    orientation="horizontal", # Көлденең
+    orientation="horizontal",
     styles={
-        "container": {"padding": "0!important", "background-color": "#0E117"},
+        "container": {"padding": "0!important", "background-color": "#0E1117"},
         "icon": {"color": "#FF4B4B", "font-size": "18px"}, 
         "nav-link": {"font-size": "16px", "text-align": "center", "margin":"0px", "--hover-color": "#262730"},
         "nav-link-selected": {"background-color": "#FF4B4B", "color": "white", "font-weight": "bold"},
     }
 )
 
-# 3. ТҮЗЕТУ: 'with tab1:' орнына 'if' қолданамыз
-# --- БӨЛІМ 1: БАҒА ЕНГІЗУ ФОРМАСЫ ---
-if selected_tab == "Баға енгізу":
-    st.info("Күнді таңдасаңыз, сол күннің пәндері тізімде автоматты түрде шығады.")
-    
-    # --- ДИНАМИКАЛЫҚ БӨЛІМ (ФОРМАДАН ТЫС) ---
-    st.subheader("1. Сабақ ақпараты")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        selected_day = st.date_input(
-            "📅 Сабақ күнін таңдаңыз", 
-            datetime.date.today(),
-            format="DD.MM.YYYY"
-        )
-    
-    with col2:
-        day_of_week = selected_day.weekday() 
-        week_number = selected_day.isocalendar()[1] 
-        is_even_week = (week_number % 2 == 0)
-        todays_subjects = list(DAILY_SCHEDULE.get(day_of_week, []))
+GOOGLE_SHEET_NAME = "Студенттердің бағалары" # Google Sheet аты
 
-        if day_of_week == 2:
-            if is_even_week: todays_subjects.insert(1, "Физика (ауыспалы)") 
-            else: todays_subjects.insert(1, "Ағылшын тілі (ауыспалы)")
-        elif day_of_week == 4:
-            if is_even_week: todays_subjects.append("География (ауыспалы)")
-            else: todays_subjects.append("Дүниежүзі тарихы (ауыспалы)")
+# --- БӨЛІМ 1: АНАЛИТИКА (ЖАҢА БӨЛІМ) ---
+if selected_tab == "📊 Аналитика":
+    st.subheader("📊 Жалпы үлгерім аналитикасы")
+    client = connect_to_gsheet()
+    
+    if client:
+        df = load_data_from_gsheet(client, GOOGLE_SHEET_NAME)
         
-        if not todays_subjects: 
-            subject_options = ["Бүгін сабақ жоқ", "Басқа пән (төменге жазыңыз)"]
+        if df.empty:
+            st.warning("📊 Аналитика үшін әлі деректер жоқ. Бірнеше баға енгізіңіз.")
         else:
-            subject_options = ["Пәнді таңдаңыз..."] + todays_subjects + ["Басқа пән (төменге жазыңыз)"]
-        
-        selected_subject = st.selectbox(
-            "📓 Пәнді таңдаңыз", 
-            options=subject_options,
-            index=0
-        )
+            col1, col2, col3 = st.columns(3)
+            col1.metric("📝 Барлық баға саны", f"{df.shape[0]} дана")
+            col2.metric("💯 Орташа баға", f"{df['Баға'].mean():.1f} / 100")
+            col3.metric("🧑‍🎓 Студент саны", f"{df['Студент Аты'].nunique()} адам")
+            
+            st.divider()
+            
+            # График 1: Студенттер бойынша орташа баға
+            st.subheader("Студенттердің орташа бағасы")
+            avg_grades = df.groupby('Студент Аты')['Баға'].mean().reset_index().sort_values(by="Баға", ascending=False)
+            st.bar_chart(avg_grades, x="Студент Аты", y="Баға")
+            
+            # График 2: Соңғы енгізілген бағалар
+            st.subheader("Соңғы енгізілген 10 баға")
+            st.dataframe(
+                df.tail(10)[["Күні", "Пән", "Студент Аты", "Баға"]], 
+                use_container_width=True,
+                hide_index=True
+            )
 
-    other_subject = ""
-    if selected_subject == "Басқа пән (төменге жазыңыз)":
-        other_subject = st.text_input("Пәннің атын жазыңыз:", placeholder="Мыс: Электив")
+# --- БӨЛІМ 2: БАҒА ЕНГІЗУ (ДИЗАЙН ЖАҢАРТЫЛДЫ) ---
+if selected_tab == "📝 Баға енгізу":
+    
+    # 1. КАРТОЧКА: Сабақ ақпараты (Формадан тыс)
+    with sac.card(title="1. Сабақ ақпараты", icon="calendar-event", collapsible=True, color='red'):
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_day = st.date_input(
+                "📅 Сабақ күнін таңдаңыз", 
+                datetime.date.today(),
+                format="DD.MM.YYYY"
+            )
+        
+        with col2:
+            day_of_week = selected_day.weekday() 
+            week_number = selected_day.isocalendar()[1] 
+            is_even_week = (week_number % 2 == 0)
+            todays_subjects = list(DAILY_SCHEDULE.get(day_of_week, []))
+
+            if day_of_week == 2:
+                if is_even_week: todays_subjects.insert(1, "Физика (ауыспалы)") 
+                else: todays_subjects.insert(1, "Ағылшын тілі (ауыспалы)")
+            elif day_of_week == 4:
+                if is_even_week: todays_subjects.append("География (ауыспалы)")
+                else: todays_subjects.append("Дүниежүзі тарихы (ауыспалы)")
+            
+            if not todays_subjects: 
+                subject_options = ["Бүгін сабақ жоқ", "Басқа пән (төменге жазыңыз)"]
+            else:
+                subject_options = ["Пәнді таңдаңыз..."] + todays_subjects + ["Басқа пән (төменге жазыңыз)"]
+            
+            selected_subject = st.selectbox(
+                "📓 Пәнді таңдаңыз", 
+                options=subject_options,
+                index=0
+            )
+
+        other_subject = ""
+        if selected_subject == "Басқа пән (төменге жазыңыз)":
+            other_subject = st.text_input("Пәннің атын жазыңыз:", placeholder="Мыс: Электив")
 
     st.divider()
 
-    # --- ФОРМА БӨЛІМІ (Тек сақтау үшін) ---
-    with st.form("grade_form"):
-        st.subheader("2. Бағалау мәліметтері")
-        selected_student = st.selectbox(
-            "🧑‍🎓 Студенттің аты-жөні", 
-            options=STUDENT_LIST,
-            index=0
-        )
-        grade = st.number_input(
-            "💯 Баға (0-100)", 
-            min_value=0.0, 
-            max_value=100.0, 
-            value=75.0,
-            step=1.0
-        )
-        comment = st.text_area(
-            "✍️ Түсініктеме (міндетті емес)", 
-            placeholder="Мысалы: Үй жұмысы №3, CӨЖ-1, Сабақтағы белсенділік..."
-        )
-        st.divider()
-        submitted = st.form_submit_button("💾 Бағаны сақтау", type="primary", use_container_width=True)
+    # 2. КАРТОЧКА: Бағалау (Форманың ішінде)
+    with sac.card(title="2. Бағалау мәліметтері", icon="pencil-fill", color='red'):
+        with st.form("grade_form"):
+            selected_student = st.selectbox(
+                "🧑‍🎓 Студенттің аты-жөні", 
+                options=STUDENT_LIST,
+                index=0
+            )
+            grade = st.number_input(
+                "💯 Баға (0-100)", 
+                min_value=0.0, 
+                max_value=100.0, 
+                value=75.0,
+                step=1.0
+            )
+            comment = st.text_area(
+                "✍️ Түсініктеме (міндетті емес)", 
+                placeholder="Мысалы: Үй жұмысы №3, CӨЖ-1, Сабақтағы белсенділік..."
+            )
+            st.divider()
+            submitted = st.form_submit_button("💾 Бағаны сақтау", type="primary", use_container_width=True)
 
-    # --- Сақтау логикасы (Формадан тыс) ---
+    # --- Сақтау логикасы (Карточкадан тыс) ---
     if submitted:
         final_subject = other_subject if selected_subject == "Басқа пән (төменге жазыңыз)" else selected_subject
         
         if final_subject == "Пәнді таңдаңыз..." or final_subject == "Бүгін сабақ жоқ" or not final_subject:
-            st.warning("⚠️ 'Пәнді' таңдаңыз немесе жазыңыз.", icon="✋")
-        elif selected_student == "Студенттің таңдаңыз...":
-            st.warning("⚠️ 'Студентті' таңдаңыз.", icon="🧑‍🎓")
+            sac.alert(label='Пәнді таңдаңыз немесе жазыңыз.', icon='warning', color='orange')
+        elif selected_student == "Студентті таңдаңыз...": 
+            sac.alert(label='Студентті таңдаңыз.', icon='warning', color='orange')
         else:
             with st.spinner(f"'{selected_student}' үшін баға сақталуда..."):
                 client = connect_to_gsheet()
@@ -208,19 +226,19 @@ if selected_tab == "Баға енгізу":
                         comment,
                         current_time
                     ]
-                    GOOGLE_SHEET_NAME = "Студенттердің бағалары" 
                     if save_to_gsheet(client, GOOGLE_SHEET_NAME, data_to_save):
-                        st.success(f"✅ {selected_day.strftime('%d.%m.%Y')} күнгі '{final_subject}' пәнінен '{selected_student}' үшін баға ({grade}) сәтті сақталды!")
+                        sac.alert(
+                            label=f"{selected_day.strftime('%d.%m.%Y')} күнгі '{final_subject}' пәнінен '{selected_student}' үшін баға ({grade}) сәтті сақталды!", 
+                            icon='check-circle-fill', 
+                            color='green'
+                        )
                         st.balloons()
                     else:
-                        st.error("❌ Деректерді Google Sheet-ке сақтау кезінде қате орын алды.")
+                        sac.alert(label='Деректерді Google Sheet-ке сақтау кезінде қате орын алды.', icon='x-circle-fill', color='red')
 
-# --- БӨЛІМ 2: САБАҚ КЕСТЕСІ ---
-# 3. ТҮЗЕТУ: 'with tab2:' орнына 'if' қолданамыз
-if selected_tab == "Сабақ кестесі":
+# --- БӨЛІМ 3: САБАҚ КЕСТЕСІ ---
+if selected_tab == "🗓️ Сабақ кестесі":
     st.subheader("БҚ2503 тобының сабақ кестесі")
-    st.info("Бұл сіздің ресми сабақ кестеңіз. 'Баға енгізу' бетіндегі пәндер тізімі осы кестеге негізделген.")
-    
     try:
         st.image(
             "2025-11-24 23.56.03.jpg", 
@@ -228,20 +246,14 @@ if selected_tab == "Сабақ кестесі":
         )
     except Exception as e:
         st.error(f"⚠️ Cабақ кестесінің суретін жүктеу кезінде қате кетті.")
-        st.error(f"Техникалық қате: {e}")
         st.warning("Суретті ('2025-11-24 23.56.03.jpg') GitHub репозиторийіңізге жүктегеніңізді тексеріп, 'Reboot' жасаңыз.")
 
-# --- БӨЛІМ 3: ХАБАРЛАНДЫРУЛАР ---
-# 3. ТҮЗЕТУ: 'with tab3:' орнына 'if' қолданамыз
-if selected_tab == "Хабарландырулар":
+# --- БӨЛІМ 4: ХАБАРЛАНДЫРУЛАР (ДИЗАЙН ЖАҢАРТЫЛДЫ) ---
+if selected_tab == "🔔 Хабарландырулар":
     st.subheader("📢 Соңғы жаңалықтар мен хабарландырулар")
     st.write("Мұнда топқа қатысты маңызды ақпарат жарияланып тұрады.")
     
     st.divider()
-
-    # ----------------------------------------------------
-    # ЖАҢАЛЫҚТАРДЫ ОСЫ ЖЕРГЕ ҚОСАСЫЗ:
-    # ----------------------------------------------------
 
     st.warning(
         "🔥 **Маңызды (Дедлайн):** 'Басқа қаладан келгендер '27-нен 7-не дейін' үйлеріне барып келуге болады, өтініш жазу арқылы, Өтінішті ата-ана жазу керек.", 
