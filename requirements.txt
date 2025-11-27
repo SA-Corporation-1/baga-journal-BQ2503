@@ -2,5 +2,4 @@ streamlit
 gspread
 pandas
 google-auth-oauthlib
-streamlit-option-menu
-streamlit-antd-components>=0.3.0
+gspread-dataframe 
