@@ -1,79 +1,26 @@
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
-import datetime
-# 1. ЖАҢА ИМПОРТ (Кәсіби дизайн үшін)
-from streamlit_option_menu import option_menu
+import pandas as pd
+# Бұл кітапхана gspread пен pandas-ты біріктіруге өте ыңғайлы
+from gspread_dataframe import get_as_dataframe, set_with_dataframe
 
-# --- 0. Парақ баптаулары (Беттің аты мен иконкасы) ---
+# --- 0. Парақ баптаулары ---
 st.set_page_config(
-    page_title="БҚ2503 Журналы",
-    page_icon="📚",
+    page_title="BQ 2503",
+    page_icon="📋",
     layout="wide"
 )
 
-# --- CSS СТИЛЬДЕРІН ҚОСУ (Кәсіби дизайн үшін) ---
-def load_css():
-    st.markdown("""
-        <style>
-            /* Streamlit-тің негізгі контейнерін сәл кішірейту */
-            .main .block-container {
-                max-width: 90%;
-                padding-top: 2rem;
-            }
+# --- 1. Google Sheets Баптаулары ---
+GOOGLE_SHEET_NAME = "Студенттердің бағалары" # Сіздің Google Sheet файлыңыздың аты
+WORKSHEET_NAME = "Лист1" # Сіздің CSV файлыңыздың аты осылай екенін көрсетті
 
-            /* 'Баға енгізу' формасын әдемілеу */
-            div[data-testid="stForm"] {
-                border: 1px solid #262730;
-                background-color: #1a1c24; /* Форманың фонын өзгерту */
-                border-radius: 10px; /* Қырларын дөңгелектеу */
-                padding: 20px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); /* Әдемі көлеңке */
-            }
-            
-            /* Хабарландыруларды әдемілеу (st.info, st.warning) */
-            div[data-testid="stAlert"] {
-                border-radius: 8px;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-            }
-        </style>
-    """, unsafe_allow_html=True)
+# --- 2. Google Sheets Функциялары ---
 
-load_css()
-# --- CSS СОҢЫ ---
-
-
-# --- 1. Студенттер тізімі (Өзгермейді) ---
-STUDENT_LIST = [
-    "Студентті таңдаңыз...",
-    "Ардабек Ерлан",
-    "Құрманбай Рамазан",
-    "Қабиден Йусуф",
-    "Алпысбаев Саят",
-    "Асқархан Алихан",
-    "Әділхан Ахметжан",
-    "Орнбеков Батыржан",
-    "Айкимбай Джалил",
-    "Тілеубек Нұрислам",
-    "Бахриден Жанат",
-    "Сарсенбай Ахмет"
-]
-
-# --- 2. Пәндер кестесі (Өзгермейді) ---
-DAILY_SCHEDULE = {
-    0: ["Қазақ тілі", "Физика", "Ағылшын тілі", "Орыс тілі және әдебиеті (онлайн)", "Химия (онлайн)"], # Дс
-    1: ["Биология", "Информатика", "Математика"], # Сс
-    2: ["Математика", "Қазақ әдебиеті", "Қазақ тілі (онлайн)"], # Ср
-    3: ["Дене тәрбиесі", "Химия", "Қазақстан тарихы"], # Бс
-    4: ["Орыс тілі және әдебиеті", "Алғашқы әскери және технологиялық дайындық"], # Жм
-    5: [], # Сн
-    6: []  # Жк
-}
-
-# --- 3. Google Sheets функциялары (Өзгермейді) ---
-
-@st.cache_resource
+@st.cache_resource(ttl=3600)
 def connect_to_gsheet():
+    """Google Sheets-ке бір рет қосылу."""
     try:
         creds_dict = st.secrets["gcp_service_account"]
         creds = Credentials.from_service_account_info(creds_dict)
@@ -85,186 +32,106 @@ def connect_to_gsheet():
         return client
     except Exception as e:
         st.error(f"Google Sheets-ке қосылу кезінде қате: {e}")
+        st.warning("`secrets.toml` файлыңыздың дұрыстығын тексеріңіз.")
         return None
 
-def save_to_gsheet(client, sheet_name, data_row):
+@st.cache_data(ttl=60) # Деректерді 60 секунд сайын жаңарту
+def load_data_from_sheet(_client, sheet_name, worksheet_name):
+    """Ведомостьты DataFrame ретінде оқу."""
     try:
-        sheet = client.open(sheet_name).sheet1
-        sheet.append_row(data_row, value_input_option='USER_ENTERED')
+        # 'client' орнына '_client' қолданамыз
+        sheet = _client.open(sheet_name).worksheet(worksheet_name) 
+        
+        # 1-қатарды баған (header) ретінде оқу
+        df = get_as_dataframe(sheet, header=0) 
+        
+        # 'Unnamed: 0' деген артық баған пайда болса, оны алып тастау
+        if 'Unnamed: 0' in df.columns:
+            df = df.drop(columns=['Unnamed: 0'])
+        
+        # 'Студент Аты' бағанын өңдеу
+        if 'Студент Аты' in df.columns:
+             df = df.set_index('Студент Аты')
+        
+        return df
+    
+    except gspread.exceptions.WorksheetNotFound:
+        st.error(f"'{worksheet_name}' атты парақ (worksheet) табылмады.")
+        st.info(f"Google Sheet файлыңызда '{worksheet_name}' атты парақ барына көз жеткізіңіз.")
+        return None
+    except Exception as e:
+        st.error(f"Ведомостьты оқу кезінде қате: {e}")
+        return None
+
+def save_data_to_sheet(client, sheet_name, worksheet_name, df_to_save):
+    """Өңделген DataFrame-ді Google Sheet-ке толығымен сақтау."""
+    try:
+        sheet = client.open(sheet_name).worksheet(worksheet_name)
+        
+        # Индексті қайтадан бағанға айналдыру (мысалы, 'Студент Аты')
+        df_to_save = df_to_save.reset_index()
+        
+        # Google Sheet-ті толығымен тазалап, жаңа деректерді жазу
+        set_with_dataframe(sheet, df_to_save, resize=True)
         return True
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error(f"'{sheet_name}' атты Google Sheet парағы табылмады. Атын тексеріңіз.")
-        return False
     except Exception as e:
-        st.error(f"Деректерді сақтау кезінде қате: {e}")
+        st.error(f"Ведомостьты сақтау кезінде қате: {e}")
         return False
 
-# --- 4. Streamlit интерфейсі (ЖАҢАРТЫЛҒАН) ---
+# --- 3. Streamlit Интерфейсі ---
 
-st.title("📚 Күнделікті баға журналы (БҚ2503)")
+st.title("📋 BQ 2503")
+st.markdown(f"**Google Sheet:** `{GOOGLE_SHEET_NAME}` / **Парақ:** `{WORKSHEET_NAME}`")
 
-# 2. ЖАҢА КӘСІБИ НАВИГАЦИЯ (st.tabs орнына)
-selected_tab = option_menu(
-    menu_title=None, # Тақырыпты алып тастау
-    options=["Баға енгізу", "Сабақ кестесі", "Хабарландырулар"], 
-    icons=['pencil-square', 'calendar-week', 'bell-fill'], # Иконкалар
-    menu_icon="cast", 
-    default_index=0, 
-    orientation="horizontal", # Көлденең
-    styles={
-        "container": {"padding": "0!important", "background-color": "#0E117"},
-        "icon": {"color": "#FF4B4B", "font-size": "18px"}, 
-        "nav-link": {"font-size": "16px", "text-align": "center", "margin":"0px", "--hover-color": "#262730"},
-        "nav-link-selected": {"background-color": "#FF4B4B", "color": "white", "font-weight": "bold"},
-    }
-)
+client = connect_to_gsheet()
 
-# 3. ТҮЗЕТУ: 'with tab1:' орнына 'if' қолданамыз
-# --- БӨЛІМ 1: БАҒА ЕНГІЗУ ФОРМАСЫ ---
-if selected_tab == "Баға енгізу":
-    st.info("Күнді таңдасаңыз, сол күннің пәндері тізімде автоматты түрде шығады.")
+if client:
+    # 1. Деректерді жүктеу
+    df = load_data_from_sheet(client, GOOGLE_SHEET_NAME, WORKSHEET_NAME)
     
-    # --- ДИНАМИКАЛЫҚ БӨЛІМ (ФОРМАДАН ТЫС) ---
-    st.subheader("1. Сабақ ақпараты")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        selected_day = st.date_input(
-            "📅 Сабақ күнін таңдаңыз", 
-            datetime.date.today(),
-            format="DD.MM.YYYY"
-        )
-    
-    with col2:
-        day_of_week = selected_day.weekday() 
-        week_number = selected_day.isocalendar()[1] 
-        is_even_week = (week_number % 2 == 0)
-        todays_subjects = list(DAILY_SCHEDULE.get(day_of_week, []))
-
-        if day_of_week == 2:
-            if is_even_week: todays_subjects.insert(1, "Физика (ауыспалы)") 
-            else: todays_subjects.insert(1, "Ағылшын тілі (ауыспалы)")
-        elif day_of_week == 4:
-            if is_even_week: todays_subjects.append("География (ауыспалы)")
-            else: todays_subjects.append("Дүниежүзі тарихы (ауыспалы)")
-        
-        if not todays_subjects: 
-            subject_options = ["Бүгін сабақ жоқ", "Басқа пән (төменге жазыңыз)"]
+    if df is not None:
+        if df.empty:
+            st.warning(f"'{WORKSHEET_NAME}' парағы бос. Google Sheet-ке барып, кем дегенде баған аттарын (пәндер) және бір студентті енгізіңіз.")
         else:
-            subject_options = ["Пәнді таңдаңыз..."] + todays_subjects + ["Басқа пән (төменге жазыңыз)"]
-        
-        selected_subject = st.selectbox(
-            "📓 Пәнді таңдаңыз", 
-            options=subject_options,
-            index=0
-        )
+            st.success("Деректер сәтті оқылды. Төмендегі кестені өңдей аласыз.")
+            
+            # --- 2. НЕГІЗГІ РЕДАКТОР ---
+            # 'df_editor' сессия күйінде сақталады, 
+            # бұл батырманы басқанда өзгерістердің жоғалып кетпеуіне кепілдік береді
+            if 'df_editor' not in st.session_state:
+                st.session_state.df_editor = df.copy()
 
-    other_subject = ""
-    if selected_subject == "Басқа пән (төменге жазыңыз)":
-        other_subject = st.text_input("Пәннің атын жазыңыз:", placeholder="Мыс: Электив")
-
-    st.divider()
-
-    # --- ФОРМА БӨЛІМІ (Тек сақтау үшін) ---
-    with st.form("grade_form"):
-        st.subheader("2. Бағалау мәліметтері")
-        selected_student = st.selectbox(
-            "🧑‍🎓 Студенттің аты-жөні", 
-            options=STUDENT_LIST,
-            index=0
-        )
-        grade = st.number_input(
-            "💯 Баға (0-100)", 
-            min_value=0.0, 
-            max_value=100.0, 
-            value=75.0,
-            step=1.0
-        )
-        comment = st.text_area(
-            "✍️ Түсініктеме (міндетті емес)", 
-            placeholder="Мысалы: Үй жұмысы №3, CӨЖ-1, Сабақтағы белсенділік..."
-        )
-        st.divider()
-        submitted = st.form_submit_button("💾 Бағаны сақтау", type="primary", use_container_width=True)
-
-    # --- Сақтау логикасы (Формадан тыс) ---
-    if submitted:
-        final_subject = other_subject if selected_subject == "Басқа пән (төменге жазыңыз)" else selected_subject
-        
-        if final_subject == "Пәнді таңдаңыз..." or final_subject == "Бүгін сабақ жоқ" or not final_subject:
-            st.warning("⚠️ 'Пәнді' таңдаңыз немесе жазыңыз.", icon="✋")
-        elif selected_student == "Студенттің таңдаңыз...":
-            st.warning("⚠️ 'Студентті' таңдаңыз.", icon="🧑‍🎓")
-        else:
-            with st.spinner(f"'{selected_student}' үшін баға сақталуда..."):
-                client = connect_to_gsheet()
-                if client:
-                    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    data_to_save = [
-                        selected_day.strftime("%Y-%m-%d"),
-                        final_subject,
-                        selected_student,
-                        grade,
-                        comment,
-                        current_time
-                    ]
-                    GOOGLE_SHEET_NAME = "Студенттердің бағалары" 
-                    if save_to_gsheet(client, GOOGLE_SHEET_NAME, data_to_save):
-                        st.success(f"✅ {selected_day.strftime('%d.%m.%Y')} күнгі '{final_subject}' пәнінен '{selected_student}' үшін баға ({grade}) сәтті сақталды!")
+            # st.data_editor өзгерістерді автоматты түрде 'st.session_state.df_editor' ішінде сақтайды
+            edited_df = st.data_editor(
+                st.session_state.df_editor,
+                num_rows="dynamic", # Жаңа студент қосу/өшіруге рұқсат
+                use_container_width=True,
+                height=600 # Кестенің биіктігі
+            )
+            
+            st.divider()
+            
+            col1, col2 = st.columns(2)
+            
+            # --- 3. Сақтау батырмасы ---
+            if col1.button("💾 Өзгерістерді Google Sheet-ке сақтау", type="primary", use_container_width=True):
+                with st.spinner("Сақталуда..."):
+                    # Өңделген деректерді (edited_df) сақтау
+                    if save_data_to_sheet(client, GOOGLE_SHEET_NAME, WORKSHEET_NAME, edited_df):
+                        st.success("✅ Ведомость сәтті жаңартылды!")
                         st.balloons()
+                        # Кэшті тазалап, деректерді қайта жүктеу
+                        st.cache_data.clear()
+                        st.session_state.df_editor = edited_df.copy() # Жаңартылған күйді сақтау
                     else:
-                        st.error("❌ Деректерді Google Sheet-ке сақтау кезінде қате орын алды.")
+                        st.error("❌ Сақтау кезінде қате орын алды.")
 
-# --- БӨЛІМ 2: САБАҚ КЕСТЕСІ ---
-# 3. ТҮЗЕТУ: 'with tab2:' орнына 'if' қолданамыз
-if selected_tab == "Сабақ кестесі":
-    st.subheader("БҚ2503 тобының сабақ кестесі")
-    st.info("Бұл сіздің ресми сабақ кестеңіз. 'Баға енгізу' бетіндегі пәндер тізімі осы кестеге негізделген.")
-    
-    try:
-        st.image(
-            "2025-11-24 23.56.03.jpg", 
-            caption="Ресми сабақ кестесі (Суретті үлкейту үшін басыңыз)"
-        )
-    except Exception as e:
-        st.error(f"⚠️ Cабақ кестесінің суретін жүктеу кезінде қате кетті.")
-        st.error(f"Техникалық қате: {e}")
-        st.warning("Суретті ('2025-11-24 23.56.03.jpg') GitHub репозиторийіңізге жүктегеніңізді тексеріп, 'Reboot' жасаңыз.")
+            # --- 4. Қайта жүктеу батырмасы ---
+            if col2.button("🔄 Google Sheet-тен қайта жүктеу", use_container_width=True):
+                st.cache_data.clear()
+                st.session_state.df_editor = load_data_from_sheet(client, GOOGLE_SHEET_NAME, WORKSHEET_NAME)
+                st.info("Деректер Google Sheet-тен қайта жүктелді.")
+                st.rerun() # Бетті жаңарту
 
-# --- БӨЛІМ 3: ХАБАРЛАНДЫРУЛАР ---
-# 3. ТҮЗЕТУ: 'with tab3:' орнына 'if' қолданамыз
-if selected_tab == "Хабарландырулар":
-    st.subheader("📢 Соңғы жаңалықтар мен хабарландырулар")
-    st.write("Мұнда топқа қатысты маңызды ақпарат жарияланып тұрады.")
-    
-    st.divider()
-
-    # ----------------------------------------------------
-    # ЖАҢАЛЫҚТАРДЫ ОСЫ ЖЕРГЕ ҚОСАСЫЗ:
-    # ----------------------------------------------------
-
-    st.warning(
-        "🔥 **Маңызды (Дедлайн):** 'Басқа қаладан келгендер '27-нен 7-не дейін' үйлеріне барып келуге болады, өтініш жазу арқылы, Өтінішті ата-ана жазу керек.", 
-        icon="🔥"
-    )
-    
-    st.info(
-        "ℹ️ **Жалпы хабарлама:** 'Нұрислам' мен 'Ағила' Физикадан тақтаға шығады 26.11.2025 ж.", 
-        icon="ℹ️"
-    )
-    
-    #st.success(
-       # "🎉 **Құттықтаймыз!** 'Информатика' пәнінен өткен олимпиадада біздің топтан Қабиден Йусуф 1-орын алды.", 
-       # icon="🎉"
-    #)
-    
-    st.error(
-        "❌ **Жүргізушілерді 'Биология' сабағының 2 ші 45 минуттан (полупара) сұрап алды", 
-        icon="❌"
-    )
-    
-    st.markdown("""
-    ---
-    #### Мұрағат (Ескі жаңалықтар)
-    * *17.11.2025 - 24.11.2025  Аралық (рубежка) уақыты.*
-    """)
+else:
+    st.error("Google Sheets-ке қосылу мүмкін болмады. `secrets.toml` файлын тексеріңіз.")
