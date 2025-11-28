@@ -2,4 +2,3 @@ streamlit
 gspread
 google-auth-oauthlib
 streamlit_option_menu
-gspread_dataframe
